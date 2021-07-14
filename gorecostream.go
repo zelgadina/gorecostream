@@ -1,3 +1,9 @@
+// Gorecostream receives a file.jsonl on input, takes an url and a list of categories for each json.
+// Then it pumps the title and description for this url
+// and writes the url and snippet to the category_name.tsv.
+
+// TODO: add new error handler and fix writing to file (with buffer).
+
 package main
 
 import (
@@ -64,7 +70,7 @@ func getSnippet(wg *sync.WaitGroup, urls <-chan *Doc, snippets chan<- *Doc) {
 
         req, err := http.NewRequest(http.MethodGet, doc.Url, nil)
         if err != nil {
-            log.Println("CFailed to create request", err)
+            log.Println("Failed to create request", err)
             continue
         }
 
@@ -106,6 +112,7 @@ func getSnippet(wg *sync.WaitGroup, urls <-chan *Doc, snippets chan<- *Doc) {
     }
 }
 
+// Extracts title and description if possible.
 func extract(body []byte, doc *Doc) {
     res := string(body[:])
     z := html.NewTokenizer(strings.NewReader(res))
@@ -163,6 +170,7 @@ func extractMetaProperty(t html.Token, prop string) (content string, ok bool) {
     return
 }
 
+// For each document from the channel, it sends its url and snippet to the channels according to its categories.
 func selectCategory(wg *sync.WaitGroup, snippets <-chan *Doc) {
     for {
         doc, ok := <-snippets
