@@ -2,7 +2,7 @@
 // Then it pumps the title and description for this url
 // and writes the url and snippet to the category_name.tsv.
 
-// TODO: add new error handler and fix writing to file (with buffer).
+// TODO: add new error handler, fix writing to file (with buffer), check extract title and description.
 
 package main
 
@@ -221,7 +221,7 @@ func main() {
     urls := make(chan *Doc, 5)
     snippets := make(chan *Doc)
 
-    filename := "50.jsonl"
+    filename := "500.jsonl"
     go readFromFile(filename, urls)
 
     for i := 0; i < 5; i++ {

@@ -1,4 +1,4 @@
-module gorecostream.go
+module github.com/zelgadina/gorecostream
 
 go 1.16
 
