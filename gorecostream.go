@@ -2,7 +2,7 @@
 // Then it pumps the title and description for this url
 // and writes the url and snippet to the category_name.tsv.
 
-// TODO: add new error handler, fix writing to file (with buffer), check extract title and description.
+// TODO: add new error handler, fix writing to file (with buffer), check extract title and description, check jsons, more tests.
 
 package main
 
@@ -31,7 +31,7 @@ type Doc struct {
 
 var categories = make(map[string]chan []string)
 
-func readFromFile(filename string, urls chan<- *Doc) {
+func ReadFromFile(filename string, urls chan<- *Doc) {
     file, err := os.Open(filename)
     if err != nil {
         log.Fatalln("Cannot open file", err)
@@ -222,7 +222,7 @@ func main() {
     snippets := make(chan *Doc)
 
     filename := "500.jsonl"
-    go readFromFile(filename, urls)
+    go ReadFromFile(filename, urls)
 
     for i := 0; i < 5; i++ {
         wg_snippets.Add(1)
