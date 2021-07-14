@@ -9,10 +9,11 @@ import (
     "net/http"
     "encoding/csv"
     "time"
-    "io"
+    "io/ioutil"
     "golang.org/x/net/html"
+    "golang.org/x/net/html/charset"
     "sync"
-    // "unicode/utf8"
+    "strings"
 )
 
 type Doc struct {
@@ -24,31 +25,34 @@ type Doc struct {
 
 var categories = make(map[string]chan []string)
 
-func readFromFile(urls chan<- *Doc) {
-    file, err := os.Open("50.jsonl")
+func readFromFile(filename string, urls chan<- *Doc) {
+    file, err := os.Open(filename)
     if err != nil {
-        log.Fatal(err)
+        log.Fatalln("Cannot open file", err)
     }
     defer file.Close()
 
     scanner := bufio.NewScanner(file)
     for scanner.Scan() {
+        if err := scanner.Err(); err != nil {
+            log.Fatalln("Cannot scan string", err)
+        }
         doc := new(Doc)
         json.Unmarshal([]byte(scanner.Text()), &doc)
-
         if len(doc.Categories) == 0 {
             doc.Categories = []string{"without_category"}
         }
         urls <- doc
     }
-    if err := scanner.Err(); err != nil {
-        log.Fatal(err)
-    }
     close(urls)
 }
 
-func getSnippet(wg *sync.WaitGroup, urls <-chan *Doc, snippets chan<- *Doc) { 
+func getSnippet(wg *sync.WaitGroup, urls <-chan *Doc, snippets chan<- *Doc) {
     defer wg.Done()
+    headers := make(map[string]string)
+    headers["User-Agent"] = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 YaBrowser/20.9.3.189 (beta) Yowser/2.5 Safari/537.36"
+    headers["Accept"] = "*/*"
+    headers["Accept-Language"] = "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3"
     for {
         doc, ok := <- urls
         if !ok {
@@ -57,30 +61,54 @@ func getSnippet(wg *sync.WaitGroup, urls <-chan *Doc, snippets chan<- *Doc) {
         client := &http.Client {
             Timeout: 30 * time.Second,
         }
-        resp, err := client.Get(doc.Url)
 
-        // if err != nil {
-        //     log.Println(err)
-        //     continue
-        // }
-        defer resp.Body.Close()
-
-        switch resp.StatusCode {
-        case 404:
-            log.Println(err)
-            continue
-        case 503:
-            log.Println(err)
+        req, err := http.NewRequest(http.MethodGet, doc.Url, nil)
+        if err != nil {
+            log.Println("CFailed to create request", err)
             continue
         }
-        extract(resp.Body, doc)
+
+        for k, v := range headers {
+            req.Header.Set(k, v)
+        }
+
+        resp, err := client.Do(req)
+        if err != nil {
+            log.Println("Failed to complete request", err)
+            continue
+        }
+
+        defer resp.Body.Close()
+
+        if resp.StatusCode < 200 && resp.StatusCode >= 300 {
+            log.Println(resp.Status)
+            continue
+        }
+
+        utf8, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
+        if err != nil {
+            log.Println("Failed to create new utf8-Reader", err)
+            continue
+        }
+        body, err := ioutil.ReadAll(utf8)
+        if err != nil {
+            log.Println("Failed to extract body", err)
+            continue
+        }
+        extract(body, doc)
+        // err = extract(body, doc)
+        // if err != nil {
+        //     log.Println("Failed to get title or description", err)
+        //     continue
+        // }
         
         snippets <- doc
     }
 }
 
-func extract(resp io.Reader, doc *Doc) {
-    z := html.NewTokenizer(resp)
+func extract(body []byte, doc *Doc) {
+    res := string(body[:])
+    z := html.NewTokenizer(strings.NewReader(res))
     titleFound := false
     for {
         tt := z.Next()
@@ -146,7 +174,7 @@ func selectCategory(wg *sync.WaitGroup, snippets <-chan *Doc) {
         }
         for _, category := range doc.Categories {
             if _, ok := categories[category]; !ok {
-                categories[category] = make(chan []string)
+                categories[category] = make(chan []string, 5)
                 wg.Add(1)
                 go writeToTSV(wg, category, categories[category])
             }
@@ -157,7 +185,9 @@ func selectCategory(wg *sync.WaitGroup, snippets <-chan *Doc) {
 
 func writeToTSV(wg *sync.WaitGroup, category string, lines <-chan []string) {
     file, err := os.Create(fmt.Sprintf("%s.tsv", category))
-    checkError("Cannot create file ", err)
+     if err != nil {
+        log.Fatalln("Cannot create file", err)
+    }
 
     writer := csv.NewWriter(file)
     writer.Comma = '\t'
@@ -173,32 +203,20 @@ func writeToTSV(wg *sync.WaitGroup, category string, lines <-chan []string) {
         writer.Write(line)
         writer.Flush()
         if err := writer.Error(); err != nil {
-            log.Fatal("Error writing tsv: ", err)
+            log.Fatalln("Error writing tsv:", err)
         }
-    }
-}
-
-
-func checkError(message string, err error) {
-    if err != nil {
-        log.Fatal(message, err)
-    }
-}
-
-func printSnippet(snippets <-chan *Doc) {
-    for snippet := range snippets {
-        fmt.Println(snippet.Url, snippet.Title, snippet.Description, snippet.Categories)
     }
 }
 
 func main() {
     var wg_snippets, wg_files sync.WaitGroup
-    urls := make(chan *Doc, 10)
+    urls := make(chan *Doc, 5)
     snippets := make(chan *Doc)
 
-    go readFromFile(urls)
+    filename := "50.jsonl"
+    go readFromFile(filename, urls)
 
-    for i := 0; i < 3; i++ {
+    for i := 0; i < 5; i++ {
         wg_snippets.Add(1)
         go getSnippet(&wg_snippets, urls, snippets)
     }
