@@ -225,7 +225,7 @@ func main() {
     urls := make(chan *Doc, 5)
     snippets := make(chan *Doc)
 
-    filename := "5.jsonl"
+    filename := "500.jsonl"
     go ReadFromFile(filename, urls)
 
     for i := 0; i < 5; i++ {
