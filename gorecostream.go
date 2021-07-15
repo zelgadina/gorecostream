@@ -37,6 +37,7 @@ func ReadFromFile(filename string, urls chan<- *Doc) {
         log.Fatalln("Cannot open file", err)
     }
     defer file.Close()
+    defer close(urls)    
 
     scanner := bufio.NewScanner(file)
     for scanner.Scan() {
@@ -45,12 +46,15 @@ func ReadFromFile(filename string, urls chan<- *Doc) {
         }
         doc := new(Doc)
         json.Unmarshal([]byte(scanner.Text()), &doc)
+        if err != nil {
+            log.Println("Cannot parse json", err)
+            continue
+        }
         if len(doc.Categories) == 0 {
             doc.Categories = []string{"without_category"}
         }
         urls <- doc
     }
-    close(urls)
 }
 
 func getSnippet(wg *sync.WaitGroup, urls <-chan *Doc, snippets chan<- *Doc) {
@@ -59,13 +63,13 @@ func getSnippet(wg *sync.WaitGroup, urls <-chan *Doc, snippets chan<- *Doc) {
     headers["User-Agent"] = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 YaBrowser/20.9.3.189 (beta) Yowser/2.5 Safari/537.36"
     headers["Accept"] = "*/*"
     headers["Accept-Language"] = "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3"
+    client := &http.Client {
+        Timeout: 30 * time.Second,
+    }
     for {
         doc, ok := <- urls
         if !ok {
             return
-        }
-        client := &http.Client {
-            Timeout: 30 * time.Second,
         }
 
         req, err := http.NewRequest(http.MethodGet, doc.Url, nil)
@@ -221,7 +225,7 @@ func main() {
     urls := make(chan *Doc, 5)
     snippets := make(chan *Doc)
 
-    filename := "500.jsonl"
+    filename := "5.jsonl"
     go ReadFromFile(filename, urls)
 
     for i := 0; i < 5; i++ {
