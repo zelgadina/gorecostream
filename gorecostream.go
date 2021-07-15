@@ -2,7 +2,7 @@
 // Then it pumps the title and description for this url
 // and writes the url and snippet to the category_name.tsv.
 
-// TODO: add new error handler, fix writing to file (with buffer), check extract title and description, check jsons, more tests.
+// TODO: add new error handler, fix writing to file (with buffer), check extract title and description, more tests.
 
 package main
 
@@ -90,7 +90,7 @@ func getSnippet(wg *sync.WaitGroup, urls <-chan *Doc, snippets chan<- *Doc) {
 
         defer resp.Body.Close()
 
-        if resp.StatusCode < 200 && resp.StatusCode >= 300 {
+        if resp.StatusCode < 200 || resp.StatusCode >= 300 {
             log.Println(resp.Status)
             continue
         }
@@ -186,7 +186,7 @@ func selectCategory(wg *sync.WaitGroup, snippets <-chan *Doc) {
         }
         for _, category := range doc.Categories {
             if _, ok := categories[category]; !ok {
-                categories[category] = make(chan []string, 5)
+                categories[category] = make(chan []string)
                 wg.Add(1)
                 go writeToTSV(wg, category, categories[category])
             }
