@@ -2,7 +2,7 @@
 // Then it pumps the title and description for this url
 // and writes the url and snippet to the category_name.tsv.
 
-// TODO: add new error handler, fix writing to file (with buffer), check extract title and description, more tests.
+// TODO: add new error handler, check extract title and description, more tests.
 
 package main
 
@@ -186,7 +186,7 @@ func selectCategory(wg *sync.WaitGroup, snippets <-chan *Doc) {
         }
         for _, category := range doc.Categories {
             if _, ok := categories[category]; !ok {
-                categories[category] = make(chan []string)
+                categories[category] = make(chan []string, 5)
                 wg.Add(1)
                 go writeToTSV(wg, category, categories[category])
             }
@@ -203,20 +203,23 @@ func writeToTSV(wg *sync.WaitGroup, category string, lines <-chan []string) {
 
     writer := csv.NewWriter(file)
     writer.Comma = '\t'
-    // defer writer.Flush()
-    defer wg.Done()
-    defer file.Close()
+
+    checkWriterError := func() {
+        if err := writer.Error(); err != nil {
+            log.Fatalln("Error writing tsv:", err)
+        }
+    }
+
+    defer wg.Done();
+    defer file.Close(); checkWriterError()
+    defer writer.Flush(); checkWriterError()
 
     for {
         line, ok := <- lines
         if !ok {
             return
         }
-        writer.Write(line)
-        writer.Flush()
-        if err := writer.Error(); err != nil {
-            log.Fatalln("Error writing tsv:", err)
-        }
+        writer.Write(line); checkWriterError()
     }
 }
 
@@ -225,7 +228,7 @@ func main() {
     urls := make(chan *Doc, 5)
     snippets := make(chan *Doc)
 
-    filename := "500.jsonl"
+    filename := "5.jsonl"
     go ReadFromFile(filename, urls)
 
     for i := 0; i < 5; i++ {
